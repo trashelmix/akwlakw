@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZIP to TXT Converter for Bug Bounties</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        .truncate {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .sticky-buttons {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            z-index: 10;
+            padding: 1rem 0;
+            border-top: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-4xl mx-4">
+        <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">ZIP to TXT Converter</h1>
+        <p class="text-gray-600 mb-6 text-center text-sm">Upload a ZIP file to extract pure code and data into TXT for analysis.</p>
+        
+        <!-- Input and Buttons -->
+        <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+            <input type="file" id="zipInput" accept=".zip" class="w-full sm:flex-grow p-2 border rounded text-sm">
+            <button id="convertBtn" class="w-full sm:w-auto bg-blue-500 text-white p-2 rounded disabled:bg-gray-400 text-sm" disabled>Convert</button>
+        </div>
+        
+        <!-- Progress Bar -->
+        <div class="w-full bg-gray-200 rounded-full h-4 mb-6 hidden" id="progressBarContainer">
+            <div id="progressBar" class="bg-blue-500 h-4 rounded-full" style="width: 0%"></div>
+        </div>
+        
+        <!-- Status -->
+        <p id="status" class="text-center text-gray-600 mb-6 text-sm"></p>
+        
+        <!-- Results Table -->
+        <div class="overflow-x-auto mb-6">
+            <table id="resultsTable" class="w-full border-collapse hidden text-sm">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="border p-2 text-left text-gray-700">Path</th>
+                        <th class="border p-2 text-left text-gray-700">Status</th>
+                        <th class="border p-2 text-left text-gray-700">Size (bytes)</th>
+                        <th class="border p-2 text-left text-gray-700">Type</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTableBody" class="text-gray-600"></tbody>
+            </table>
+        </div>
+        
+        <!-- Load More Button -->
+        <div class="text-center mb-6">
+            <button id="loadMoreBtn" class="hidden bg-gray-500 text-white p-2 rounded text-sm">Load More</button>
+        </div>
+        
+        <!-- Export Button -->
+        <div class="sticky-buttons flex justify-center">
+            <a id="downloadTxtLink" class="hidden w-full sm:w-auto bg-green-500 text-white p-2 rounded text-center text-sm">Download TXT</a>
+        </div>
+    </div>
+
+    <script>
+        const zipInput = document.getElementById('zipInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const status = document.getElementById('status');
+        const progressBarContainer = document.getElementById('progressBarContainer');
+        const progressBar = document.getElementById('progressBar');
+        const resultsTable = document.getElementById('resultsTable');
+        const resultsTableBody = document.getElementById('resultsTableBody');
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        const downloadTxtLink = document.getElementById('downloadTxtLink');
+
+        // File type detection
+        const fileTypeMap = {
+            '.swift': 'Code', '.py': 'Code', '.js': 'Code', '.ts': 'Code', '.tsx': 'Code', '.jsx': 'Code',
+            '.java': 'Code', '.cpp': 'Code', '.c': 'Code', '.php': 'Code', '.rb': 'Code', '.go': 'Code',
+            '.rs': 'Code', '.kt': 'Code', '.kts': 'Code', '.pl': 'Code', '.pm': 'Code',
+            '.html': 'Markup', '.css': 'Markup', '.xml': 'Markup', '.yml': 'Config', '.yaml': 'Config',
+            '.json': 'Data', '.ini': 'Config', '.conf': 'Config', '.sh': 'Script', '.bash': 'Script',
+            '.sql': 'Data', '.db': 'Data', '.entitlements': 'Config', '.xcconfig': 'Config',
+            '.plist': 'Config', '.xcstrings': 'Localization', '.rust-package': 'Config', '.swiftformat': 'Config',
+            '.xcscheme': 'Config', '.xcworkspacedata': 'Config', '.pbxproj': 'Config', '.xctestplan': 'Test',
+            '.xcprivacy': 'Config', '.strings': 'Localization', '.storekit': 'Config', '.csv': 'Data', '.tsv': 'Data'
+        };
+
+        // Extensions for processing (all potentially useful text files)
+        const textExtensions = [
+            '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.php', '.rb', '.swift',
+            '.go', '.rs', '.kt', '.kts', '.pl', '.pm', '.sh', '.bash', '.sql', '.json', '.yml',
+            '.yaml', '.xml', '.ini', '.conf', '.html', '.css', '.db', '.entitlements', '.xcconfig',
+            '.plist', '.xcstrings', '.rust-package', '.swiftformat', '.xcscheme', '.xcworkspacedata',
+            '.pbxproj', '.xctestplan', '.xcprivacy', '.strings', '.storekit', '.csv', '.tsv'
+        ];
+
+        // Non-text extensions to skip
+        const nonTextExtensions = [
+            '.md', '.txt', '.license', '.doc', '.docx', '.pdf', '.png', '.jpg', '.jpeg', '.gif',
+            '.exe', '.bin', '.o', '.a', '.so', '.dylib', '.zip', '.gz', '.tar'
+        ];
+
+        // Comment patterns for different languages and formats
+        const commentPatterns = {
+            '.py': [/^\s*#.*$/gm, /^\s*(""".*?"""|'''.*?''')[\s]*$/gms],
+            '.js': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.ts': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.tsx': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.jsx': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.java': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.cpp': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.c': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.php': [/^\s*(\/\/|#).*|\/\*[\s\S]*?\*\//gms],
+            '.rb': [/^\s*#.*$/gm],
+            '.swift': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.go': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.rs': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.kt': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.kts': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.pl': [/^\s*#.*$/gm],
+            '.pm': [/^\s*#.*$/gm],
+            '.sh': [/^\s*#.*$/gm],
+            '.bash': [/^\s*#.*$/gm],
+            '.sql': [/^\s*--.*$/gm, /\/\*[\s\S]*?\*\/|^\s*--.*$/gms],
+            '.json': [/^\s*\/\/.*$/gm],
+            '.yml': [/^\s*#.*$/gm],
+            '.yaml': [/^\s*#.*$/gm],
+            '.xml': [/<!--[\s\S]*?-->/gms],
+            '.html': [/<!--[\s\S]*?-->/gms],
+            '.css': [/\/\*[\s\S]*?\*\//gms],
+            '.ini': [/^\s*[;#].*$/gm],
+            '.conf': [/^\s*[;#].*$/gm],
+            '.db': [/^\s*#.*$/gm],
+            '.entitlements': [/^\s*#.*$/gm],
+            '.xcconfig': [/^\s*\/\/.*$/gm],
+            '.plist': [/<!--[\s\S]*?-->/gms],
+            '.xcstrings': [/^\s*\/\/.*$/gm],
+            '.rust-package': [/^\s*#.*$/gm],
+            '.swiftformat': [/^\s*#.*$/gm],
+            '.xcscheme': [/<!--[\s\S]*?-->/gms],
+            '.xcworkspacedata': [/<!--[\s\S]*?-->/gms],
+            '.pbxproj': [/^\s*\/\/.*$/gm],
+            '.xctestplan': [/^\s*\/\/.*$/gm],
+            '.xcprivacy': [/^\s*\/\/.*$/gm],
+            '.strings': [/^\s*\/\/.*$/gm],
+            '.storekit': [/^\s*\/\/.*$/gm],
+            '.csv': [/^\s*#.*$/gm],
+            '.tsv': [/^\s*#.*$/gm]
+        };
+
+        function getFileType(path) {
+            const ext = path.includes('.') ? path.substring(path.lastIndexOf('.')).toLowerCase() : path;
+            return fileTypeMap[ext] || (path.includes('binary') ? 'Binary' : 'Unknown');
+        }
+
+        function cleanContent(content, ext) {
+            try {
+                const patterns = commentPatterns[ext] || [];
+                let cleaned = content;
+                for (const pattern of patterns) {
+                    cleaned = cleaned.replace(pattern, '');
+                }
+                // Remove empty lines
+                cleaned = cleaned.split('\n').filter(line => line.trim() !== '').join('\n');
+                return cleaned;
+            } catch (e) {
+                return `[Parsing error: ${e.message}]`;
+            }
+        }
+
+        // State for table rendering
+        let allResults = [];
+        let displayedCount = 0;
+        const PAGE_SIZE = 50;
+
+        // Enable/disable convert button
+        zipInput.addEventListener('change', () => {
+            convertBtn.disabled = !zipInput.files.length;
+        });
+
+        // Render table
+        function renderTable() {
+            resultsTableBody.innerHTML = '';
+            const endIndex = Math.min(displayedCount, allResults.length);
+            for (let i = 0; i < endIndex; i++) {
+                const result = allResults[i];
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="border p-2 truncate max-w-[200px] sm:max-w-[300px]" title="${result.path}">${result.path}</td>
+                    <td class="border p-2">${result.status}</td>
+                    <td class="border p-2">${result.size}</td>
+                    <td class="border p-2">${result.type}</td>
+                `;
+                resultsTableBody.appendChild(row);
+            }
+            loadMoreBtn.classList.toggle('hidden', displayedCount >= allResults.length);
+        }
+
+        // Load more button
+        loadMoreBtn.addEventListener('click', () => {
+            displayedCount += PAGE_SIZE;
+            renderTable();
+        });
+
+        // Convert button handler
+        convertBtn.addEventListener('click', async () => {
+            const file = zipInput.files[0];
+            if (!file) {
+                status.textContent = 'Please select a ZIP file.';
+                return;
+            }
+
+            status.textContent = 'Processing...';
+            convertBtn.disabled = true;
+            progressBarContainer.classList.remove('hidden');
+            resultsTable.classList.remove('hidden');
+            resultsTableBody.innerHTML = '';
+            loadMoreBtn.classList.add('hidden');
+            downloadTxtLink.classList.add('hidden');
+            allResults = [];
+            displayedCount = PAGE_SIZE;
+
+            try {
+                const zip = new JSZip();
+                const zipData = await file.arrayBuffer();
+                const unzipped = await zip.loadAsync(zipData);
+
+                const files = Object.entries(unzipped.files).filter(([_, entry]) => !entry.dir);
+                const totalFiles = files.length;
+                let processedFiles = 0;
+                let txtOutput = '';
+                const skippedExtensions = new Set();
+
+                for (const [relativePath, zipEntry] of files) {
+                    const fileSize = zipEntry._data.uncompressedSize || 0;
+                    const fileType = getFileType(relativePath);
+                    let statusText = 'Processed';
+                    let content = '';
+
+                    txtOutput += `--- ${relativePath} ---\n`;
+                    const ext = relativePath.includes('.') ? relativePath.substring(relativePath.lastIndexOf('.')).toLowerCase() : relativePath;
+
+                    if (nonTextExtensions.includes(ext)) {
+                        statusText = 'Skipped';
+                        skippedExtensions.add(ext);
+                        content = `[Non-text file or unsupported extension (${ext}), skipped]\n`;
+                        txtOutput += content;
+                    } else {
+                        try {
+                            content = await zipEntry.async('text');
+                            content = cleanContent(content, ext);
+                            if (content.startsWith('[Parsing error')) {
+                                statusText = 'Error';
+                            }
+                            txtOutput += `${content}\n`;
+                        } catch (e) {
+                            try {
+                                const binaryContent = await zipEntry.async('uint8array');
+                                const decoder = new TextDecoder('utf-8', { fatal: false });
+                                content = decoder.decode(binaryContent);
+                                content = cleanContent(content, ext);
+                                if (content.startsWith('[Parsing error')) {
+                                    statusText = 'Error';
+                                }
+                                txtOutput += `${content}\n`;
+                            } catch (e2) {
+                                statusText = 'Error';
+                                content = `[Error reading file: ${e2.message}]\n`;
+                                txtOutput += content;
+                            }
+                        }
+                    }
+
+                    allResults.push({ path: relativePath, status: statusText, size: fileSize, type: fileType });
+
+                    // Update progress
+                    processedFiles++;
+                    const progressPercent = (processedFiles / totalFiles) * 100;
+                    progressBar.style.width = `${progressPercent}%`;
+
+                    // Yield to prevent UI freeze
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+
+                // Render initial table
+                renderTable();
+
+                // Create download link
+                const txtBlob = new Blob([txtOutput], { type: 'text/plain;charset=utf-8' });
+                const txtUrl = URL.createObjectURL(txtBlob);
+                downloadTxtLink.href = txtUrl;
+                downloadTxtLink.download = 'repository_contents.txt';
+                downloadTxtLink.classList.remove('hidden');
+
+                status.textContent = `Conversion complete! Processed ${processedFiles} files. Skipped extensions: ${[...skippedExtensions].join(', ') || 'none'}`;
+            } catch (e) {
+                status.textContent = `Error: ${e.message}`;
+            } finally {
+                convertBtn.disabled = false;
+                progressBarContainer.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
