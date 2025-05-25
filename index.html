@@ -88,49 +88,54 @@
             '.rs': 'Code', '.kt': 'Code', '.kts': 'Code', '.pl': 'Code', '.pm': 'Code',
             '.html': 'Markup', '.css': 'Markup', '.xml': 'Markup', '.yml': 'Config', '.yaml': 'Config',
             '.json': 'Data', '.ini': 'Config', '.conf': 'Config', '.sh': 'Script', '.bash': 'Script',
-            '.sql': 'Data', '.db': 'Data', '.entitlements': 'Config', '.xcconfig': 'Config',
-            '.plist': 'Config', '.xcstrings': 'Localization', '.rust-package': 'Config', '.swiftformat': 'Config',
-            '.xcscheme': 'Config', '.xcworkspacedata': 'Config', '.pbxproj': 'Config', '.xctestplan': 'Test',
-            '.xcprivacy': 'Config', '.strings': 'Localization', '.storekit': 'Config', '.csv': 'Data', '.tsv': 'Data'
+            '.sql': 'Data', '.entitlements': 'Config', '.xcconfig': 'Config', '.plist': 'Config',
+            '.strings': 'Localization'
         };
 
-        // Extensions for processing (all potentially useful text files)
+        // Extensions for processing (code and useful data)
         const textExtensions = [
             '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.php', '.rb', '.swift',
             '.go', '.rs', '.kt', '.kts', '.pl', '.pm', '.sh', '.bash', '.sql', '.json', '.yml',
-            '.yaml', '.xml', '.ini', '.conf', '.html', '.css', '.db', '.entitlements', '.xcconfig',
-            '.plist', '.xcstrings', '.rust-package', '.swiftformat', '.xcscheme', '.xcworkspacedata',
-            '.pbxproj', '.xctestplan', '.xcprivacy', '.strings', '.storekit', '.csv', '.tsv'
+            '.yaml', '.xml', '.ini', '.conf', '.html', '.css', '.entitlements', '.xcconfig',
+            '.plist', '.strings'
         ];
 
         // Non-text extensions to skip
         const nonTextExtensions = [
             '.md', '.txt', '.license', '.doc', '.docx', '.pdf', '.png', '.jpg', '.jpeg', '.gif',
-            '.exe', '.bin', '.o', '.a', '.so', '.dylib', '.zip', '.gz', '.tar'
+            '.exe', '.bin', '.o', '.a', '.so', '.dylib', '.zip', '.gz', '.tar', '.db', '.log',
+            '.csv', '.tsv', '.pbxproj', '.xctestplan', '.xcworkspacedata', '.xcscheme', '.rust-package',
+            '.swiftformat', '.xcprivacy', '.storekit', '.xcstrings'
+        ];
+
+        // Paths to ignore
+        const ignoredPaths = [
+            'build/', 'dist/', 'Pods/', 'node_modules/', '__pycache__/', 'venv/', '.venv/',
+            'target/', 'bin/', 'obj/', 'out/', 'logs/', 'temp/', 'tmp/'
         ];
 
         // Comment patterns for different languages and formats
         const commentPatterns = {
             '.py': [/^\s*#.*$/gm, /^\s*(""".*?"""|'''.*?''')[\s]*$/gms],
-            '.js': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.ts': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.tsx': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.jsx': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.java': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.cpp': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.c': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.js': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.ts': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.tsx': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.jsx': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.java': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.cpp': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.c': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.php': [/^\s*(\/\/|#).*|\/\*[\s\S]*?\*\//gms],
             '.rb': [/^\s*#.*$/gm],
-            '.swift': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.go': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.rs': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.kt': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
-            '.kts': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gms],
+            '.swift': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.go': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.rs': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.kt': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.kts': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.pl': [/^\s*#.*$/gm],
             '.pm': [/^\s*#.*$/gm],
             '.sh': [/^\s*#.*$/gm],
             '.bash': [/^\s*#.*$/gm],
-            '.sql': [/^\s*--.*$/gm, /\/\*[\s\S]*?\*\/|^\s*--.*$/gms],
+            '.sql': [/^\s*--.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.json': [/^\s*\/\/.*$/gm],
             '.yml': [/^\s*#.*$/gm],
             '.yaml': [/^\s*#.*$/gm],
@@ -139,38 +144,67 @@
             '.css': [/\/\*[\s\S]*?\*\//gms],
             '.ini': [/^\s*[;#].*$/gm],
             '.conf': [/^\s*[;#].*$/gm],
-            '.db': [/^\s*#.*$/gm],
             '.entitlements': [/^\s*#.*$/gm],
             '.xcconfig': [/^\s*\/\/.*$/gm],
             '.plist': [/<!--[\s\S]*?-->/gms],
-            '.xcstrings': [/^\s*\/\/.*$/gm],
-            '.rust-package': [/^\s*#.*$/gm],
-            '.swiftformat': [/^\s*#.*$/gm],
-            '.xcscheme': [/<!--[\s\S]*?-->/gms],
-            '.xcworkspacedata': [/<!--[\s\S]*?-->/gms],
-            '.pbxproj': [/^\s*\/\/.*$/gm],
-            '.xctestplan': [/^\s*\/\/.*$/gm],
-            '.xcprivacy': [/^\s*\/\/.*$/gm],
-            '.strings': [/^\s*\/\/.*$/gm],
-            '.storekit': [/^\s*\/\/.*$/gm],
-            '.csv': [/^\s*#.*$/gm],
-            '.tsv': [/^\s*#.*$/gm]
+            '.strings': [/^\s*\/\/.*$/gm]
         };
+
+        // Patterns for detecting logs or build errors
+        const logPatterns = [
+            /ERROR:/i, /WARNING:/i, /Traceback \(most recent call last\)/i, /Build failed/i,
+            /Exception in thread/i, /Segmentation fault/i, /Stack trace:/i
+        ];
 
         function getFileType(path) {
             const ext = path.includes('.') ? path.substring(path.lastIndexOf('.')).toLowerCase() : path;
             return fileTypeMap[ext] || (path.includes('binary') ? 'Binary' : 'Unknown');
         }
 
+        function isIgnoredPath(path) {
+            return ignoredPaths.some(ignored => path.toLowerCase().includes(ignored.toLowerCase()));
+        }
+
+        function isLogContent(content) {
+            return logPatterns.some(pattern => pattern.test(content));
+        }
+
+        function isValidContent(content) {
+            const invalidCharRatio = (content.match(/[\uFFFD\0-\x1F\x7F-\x9F]/g) || []).length / (content.length || 1);
+            return invalidCharRatio < 0.1; // Less than 10% invalid characters
+        }
+
         function cleanContent(content, ext) {
             try {
+                // Check for log content
+                if (isLogContent(content)) {
+                    return '[Log or error content, skipped]';
+                }
+
+                // Apply comment patterns
                 const patterns = commentPatterns[ext] || [];
                 let cleaned = content;
                 for (const pattern of patterns) {
                     cleaned = cleaned.replace(pattern, '');
                 }
+
                 // Remove empty lines
                 cleaned = cleaned.split('\n').filter(line => line.trim() !== '').join('\n');
+
+                // Validate content
+                if (!isValidContent(cleaned)) {
+                    return '[Invalid or unreadable content, skipped]';
+                }
+
+                // Validate JSON if applicable
+                if (ext === '.json') {
+                    try {
+                        JSON.parse(cleaned);
+                    } catch (e) {
+                        return '[Invalid JSON content, skipped]';
+                    }
+                }
+
                 return cleaned;
             } catch (e) {
                 return `[Parsing error: ${e.message}]`;
@@ -249,29 +283,44 @@
                     txtOutput += `--- ${relativePath} ---\n`;
                     const ext = relativePath.includes('.') ? relativePath.substring(relativePath.lastIndexOf('.')).toLowerCase() : relativePath;
 
-                    if (nonTextExtensions.includes(ext)) {
+                    if (isIgnoredPath(relativePath)) {
+                        statusText = 'Skipped';
+                        content = `[Ignored path, skipped]\n`;
+                        txtOutput += content;
+                    } else if (nonTextExtensions.includes(ext)) {
                         statusText = 'Skipped';
                         skippedExtensions.add(ext);
                         content = `[Non-text file or unsupported extension (${ext}), skipped]\n`;
                         txtOutput += content;
+                    } else if (!textExtensions.includes(ext)) {
+                        statusText = 'Skipped';
+                        skippedExtensions.add(ext);
+                        content = `[Unsupported extension (${ext}), skipped]\n`;
+                        txtOutput += content;
                     } else {
                         try {
+                            // Try reading as text
                             content = await zipEntry.async('text');
                             content = cleanContent(content, ext);
-                            if (content.startsWith('[Parsing error')) {
-                                statusText = 'Error';
+                            if (content.startsWith('[Parsing error') || content.startsWith('[Invalid') || content.startsWith('[Log')) {
+                                statusText = 'Skipped';
+                                txtOutput += content + '\n';
+                            } else {
+                                txtOutput += `${content}\n`;
                             }
-                            txtOutput += `${content}\n`;
                         } catch (e) {
                             try {
+                                // Try reading as uint8array
                                 const binaryContent = await zipEntry.async('uint8array');
                                 const decoder = new TextDecoder('utf-8', { fatal: false });
                                 content = decoder.decode(binaryContent);
                                 content = cleanContent(content, ext);
-                                if (content.startsWith('[Parsing error')) {
-                                    statusText = 'Error';
+                                if (content.startsWith('[Parsing error') || content.startsWith('[Invalid') || content.startsWith('[Log')) {
+                                    statusText = 'Skipped';
+                                    txtOutput += content + '\n';
+                                } else {
+                                    txtOutput += `${content}\n`;
                                 }
-                                txtOutput += `${content}\n`;
                             } catch (e2) {
                                 statusText = 'Error';
                                 content = `[Error reading file: ${e2.message}]\n`;
