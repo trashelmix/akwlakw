@@ -86,11 +86,11 @@
             '.swift': 'Code', '.py': 'Code', '.js': 'Code', '.ts': 'Code', '.tsx': 'Code', '.jsx': 'Code',
             '.java': 'Code', '.cpp': 'Code', '.c': 'Code', '.cs': 'Code', '.php': 'Code', '.rb': 'Code',
             '.go': 'Code', '.rs': 'Code', '.kt': 'Code', '.kts': 'Code', '.pl': 'Code', '.pm': 'Code',
-            '.html': 'Markup', '.css': 'Markup', '.xml': 'Markup', '.yml': 'Config', '.yaml': 'Config',
+            '.html': 'Markup', '.css': 'Markup', '.xml': 'Config', '.yml': 'Config', '.yaml': 'Config',
             '.json': 'Data', '.ini': 'Config', '.conf': 'Config', '.sh': 'Script', '.bash': 'Script',
             '.sql': 'Data', '.entitlements': 'Config', '.xcconfig': 'Config', '.plist': 'Config',
             '.csproj': 'Config', '.sln': 'Config', '.dart': 'Code', '.lua': 'Code', '.h': 'Code',
-            '.m': 'Code', '.mm': 'Code'
+            '.m': 'Code', '.mm': 'Code', '.gradle': 'Config'
         };
 
         // Extensions for processing (all code and relevant data)
@@ -98,7 +98,7 @@
             '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.swift',
             '.go', '.rs', '.kt', '.kts', '.pl', '.pm', '.sh', '.bash', '.sql', '.json', '.yml', '.yaml',
             '.xml', '.ini', '.conf', '.html', '.css', '.entitlements', '.xcconfig', '.plist', '.csproj',
-            '.sln', '.dart', '.lua', '.h', '.m', '.mm'
+            '.sln', '.dart', '.lua', '.h', '.m', '.mm', '.gradle'
         ];
 
         // Non-text extensions to skip
@@ -109,10 +109,11 @@
             '.xcstrings', '.storekit', '.xcprivacy', '.swiftformat', '.rust-package'
         ];
 
-        // Paths to ignore
+        // Paths to ignore (including Android resources)
         const ignoredPaths = [
             'build/', 'dist/', 'Pods/', 'node_modules/', '__pycache__/', 'venv/', '.venv/',
-            'target/', 'bin/', 'obj/', 'out/', 'logs/', 'temp/', 'tmp/', '.lproj/'
+            'target/', 'bin/', 'obj/', 'out/', 'logs/', 'temp/', 'tmp/', '.lproj/',
+            'res/values', 'res/layout', 'res/drawable', 'res/mipmap', 'res/anim', 'res/color', 'res/menu'
         ];
 
         // Comment patterns for different languages and formats
@@ -155,10 +156,11 @@
             '.lua': [/^\s*--.*$/gm, /--\[\[[\s\S]*?\]\]/gms],
             '.h': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.m': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
-            '.mm': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms]
+            '.mm': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.gradle': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms]
         };
 
-        // Patterns for detecting logs or build errors (more specific)
+        // Patterns for detecting logs or build errors
         const logPatterns = [
             /ERROR:.*?(Failed|Exception|Crash)/i,
             /WARNING:.*?(Failed|Deprecated)/i,
@@ -179,7 +181,7 @@
         }
 
         function isLogContent(content, ext) {
-            // Skip log check for code files
+            // Skip log check for code and config files
             if (textExtensions.includes(ext) && ext !== '.json' && ext !== '.txt') {
                 return false;
             }
@@ -192,19 +194,38 @@
         }
 
         function detectEncoding(uint8array) {
-            // Simple heuristic to detect UTF-16 (BOM)
+            // Heuristic to detect UTF-16 (BOM) or UTF-8
             if (uint8array.length >= 2) {
                 if (uint8array[0] === 0xFE && uint8array[1] === 0xFF) return 'utf-16be';
                 if (uint8array[0] === 0xFF && uint8array[1] === 0xFE) return 'utf-16le';
             }
+            // Check for UTF-8 BOM
+            if (uint8array.length >= 3 && uint8array[0] === 0xEF && uint8array[1] === 0xBB && uint8array[2] === 0xBF) {
+                return 'utf-8';
+            }
             return 'utf-8';
         }
 
-        function cleanContent(content, ext) {
+        function isResourceXml(path, content) {
+            // Check if XML is a resource file (e.g., strings.xml, layouts)
+            const resourcePaths = ['res/values', 'res/layout', 'res/drawable', 'res/mipmap', 'res/anim', 'res/color', 'res/menu'];
+            if (resourcePaths.some(p => path.toLowerCase().includes(p))) {
+                return true;
+            }
+            // Check for common resource XML tags
+            return /<(string|plurals|color|dimen|style)\b/i.test(content);
+        }
+
+        function cleanContent(content, ext, path) {
             try {
                 // Check for log content
                 if (isLogContent(content, ext)) {
                     return '[Log or error content, skipped]';
+                }
+
+                // Skip resource XML files
+                if (ext === '.xml' && isResourceXml(path, content)) {
+                    return '[Resource XML (e.g., strings, layouts), skipped]';
                 }
 
                 // Apply comment patterns
@@ -332,8 +353,8 @@
                             content = decoder.decode(binaryContent);
 
                             if (textExtensions.includes(ext)) {
-                                content = cleanContent(content, ext);
-                                if (content.startsWith('[Parsing error') || content.startsWith('[Invalid') || content.startsWith('[Log')) {
+                                content = cleanContent(content, ext, relativePath);
+                                if (content.startsWith('[Parsing error') || content.startsWith('[Invalid') || content.startsWith('[Log') || content.startsWith('[Resource')) {
                                     statusText = 'Skipped';
                                     txtOutput += content + '\n';
                                 } else {
@@ -343,7 +364,7 @@
                                 // Try to detect code in files without standard extensions
                                 const codeKeywords = /(function|def|class|struct|enum|interface|\bint\b|\bstring\b|\bvoid\b|\breturn\b)/i;
                                 if (codeKeywords.test(content) && isValidContent(content)) {
-                                    content = cleanContent(content, ''); // No specific comment pattern
+                                    content = cleanContent(content, '', relativePath);
                                     txtOutput += `${content}\n`;
                                 } else {
                                     statusText = 'Skipped';
