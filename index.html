@@ -158,10 +158,15 @@
             '.mm': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms]
         };
 
-        // Patterns for detecting logs or build errors
+        // Patterns for detecting logs or build errors (more specific)
         const logPatterns = [
-            /ERROR:/i, /WARNING:/i, /Traceback \(most recent call last\)/i, /Build failed/i,
-            /Exception in thread/i, /Segmentation fault/i, /Stack trace:/i
+            /ERROR:.*?(Failed|Exception|Crash)/i,
+            /WARNING:.*?(Failed|Deprecated)/i,
+            /Traceback \(most recent call last\)/i,
+            /Build failed/i,
+            /Exception in thread.*?:/i,
+            /Segmentation fault/i,
+            /Stack trace:/i
         ];
 
         function getFileType(path) {
@@ -173,7 +178,11 @@
             return ignoredPaths.some(ignored => path.toLowerCase().includes(ignored.toLowerCase()));
         }
 
-        function isLogContent(content) {
+        function isLogContent(content, ext) {
+            // Skip log check for code files
+            if (textExtensions.includes(ext) && ext !== '.json' && ext !== '.txt') {
+                return false;
+            }
             return logPatterns.some(pattern => pattern.test(content));
         }
 
@@ -194,7 +203,7 @@
         function cleanContent(content, ext) {
             try {
                 // Check for log content
-                if (isLogContent(content)) {
+                if (isLogContent(content, ext)) {
                     return '[Log or error content, skipped]';
                 }
 
