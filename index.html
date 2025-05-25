@@ -28,7 +28,7 @@
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-4xl mx-4">
         <h1 class="text-2xl font-bold mb-4 text-center text-gray-800">ZIP to TXT Converter</h1>
-        <p class="text-gray-600 mb-6 text-center text-sm">Upload a ZIP file to extract pure code and relevant data into TXT for analysis.</p>
+        <p class="text-gray-600 mb-6 text-center text-sm">Upload a ZIP file to extract all code and relevant data into TXT for security analysis.</p>
         
         <!-- Input and Buttons -->
         <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
@@ -84,26 +84,29 @@
         // File type detection
         const fileTypeMap = {
             '.swift': 'Code', '.py': 'Code', '.js': 'Code', '.ts': 'Code', '.tsx': 'Code', '.jsx': 'Code',
-            '.java': 'Code', '.cpp': 'Code', '.c': 'Code', '.php': 'Code', '.rb': 'Code', '.go': 'Code',
-            '.rs': 'Code', '.kt': 'Code', '.kts': 'Code', '.pl': 'Code', '.pm': 'Code',
+            '.java': 'Code', '.cpp': 'Code', '.c': 'Code', '.cs': 'Code', '.php': 'Code', '.rb': 'Code',
+            '.go': 'Code', '.rs': 'Code', '.kt': 'Code', '.kts': 'Code', '.pl': 'Code', '.pm': 'Code',
             '.html': 'Markup', '.css': 'Markup', '.xml': 'Markup', '.yml': 'Config', '.yaml': 'Config',
             '.json': 'Data', '.ini': 'Config', '.conf': 'Config', '.sh': 'Script', '.bash': 'Script',
-            '.sql': 'Data', '.entitlements': 'Config', '.xcconfig': 'Config', '.plist': 'Config'
+            '.sql': 'Data', '.entitlements': 'Config', '.xcconfig': 'Config', '.plist': 'Config',
+            '.csproj': 'Config', '.sln': 'Config', '.dart': 'Code', '.lua': 'Code', '.h': 'Code',
+            '.m': 'Code', '.mm': 'Code'
         };
 
-        // Extensions for processing (code and useful data)
+        // Extensions for processing (all code and relevant data)
         const textExtensions = [
-            '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.php', '.rb', '.swift',
-            '.go', '.rs', '.kt', '.kts', '.pl', '.pm', '.sh', '.bash', '.sql', '.json', '.yml',
-            '.yaml', '.xml', '.ini', '.conf', '.html', '.css', '.entitlements', '.xcconfig', '.plist'
+            '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.swift',
+            '.go', '.rs', '.kt', '.kts', '.pl', '.pm', '.sh', '.bash', '.sql', '.json', '.yml', '.yaml',
+            '.xml', '.ini', '.conf', '.html', '.css', '.entitlements', '.xcconfig', '.plist', '.csproj',
+            '.sln', '.dart', '.lua', '.h', '.m', '.mm'
         ];
 
         // Non-text extensions to skip
         const nonTextExtensions = [
             '.md', '.txt', '.license', '.doc', '.docx', '.pdf', '.png', '.jpg', '.jpeg', '.gif',
             '.exe', '.bin', '.o', '.a', '.so', '.dylib', '.zip', '.gz', '.tar', '.db', '.log',
-            '.csv', '.tsv', '.pbxproj', '.xctestplan', '.xcworkspacedata', '.xcscheme', '.rust-package',
-            '.swiftformat', '.xcprivacy', '.storekit', '.xcstrings', '.strings', '.lock'
+            '.csv', '.tsv', '.pbxproj', '.xctestplan', '.xcworkspacedata', '.xcscheme', '.strings',
+            '.xcstrings', '.storekit', '.xcprivacy', '.swiftformat', '.rust-package'
         ];
 
         // Paths to ignore
@@ -122,6 +125,7 @@
             '.java': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.cpp': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.c': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.cs': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
             '.php': [/^\s*(\/\/|#).*|\/\*[\s\S]*?\*\//gms],
             '.rb': [/^\s*#.*$/gm],
             '.swift': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
@@ -144,28 +148,33 @@
             '.conf': [/^\s*[;#].*$/gm],
             '.entitlements': [/^\s*#.*$/gm],
             '.xcconfig': [/^\s*\/\/.*$/gm],
-            '.plist': [/<!--[\s\S]*?-->/gms]
+            '.plist': [/<!--[\s\S]*?-->/gms],
+            '.csproj': [/<!--[\s\S]*?-->/gms],
+            '.sln': [/^\s*#.*$/gm],
+            '.dart': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.lua': [/^\s*--.*$/gm, /--\[\[[\s\S]*?\]\]/gms],
+            '.h': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.m': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms],
+            '.mm': [/^\s*\/\/.*$/gm, /\/\*[\s\S]*?\*\//gms]
         };
 
-        // Patterns for detecting logs, errors, or translations
-        const skipPatterns = [
+        // Patterns for detecting logs or build errors
+        const logPatterns = [
             /ERROR:/i, /WARNING:/i, /Traceback \(most recent call last\)/i, /Build failed/i,
-            /Exception in thread/i, /Segmentation fault/i, /Stack trace:/i,
-            /"[^"]+"\s*=\s*"[^"]+";/g, // Translation format (e.g., "key" = "value";)
-            /"state":\s*"translated"/i, /"value":\s*".*"/i // Localization metadata
+            /Exception in thread/i, /Segmentation fault/i, /Stack trace:/i
         ];
 
         function getFileType(path) {
             const ext = path.includes('.') ? path.substring(path.lastIndexOf('.')).toLowerCase() : path;
-            return fileTypeMap[ext] || (path.includes('binary') ? 'Binary' : 'Unknown');
+            return fileTypeMap[ext] || (path.includes('binary') ? 'Binary' : 'Code');
         }
 
         function isIgnoredPath(path) {
             return ignoredPaths.some(ignored => path.toLowerCase().includes(ignored.toLowerCase()));
         }
 
-        function isSkippableContent(content) {
-            return skipPatterns.some(pattern => pattern.test(content));
+        function isLogContent(content) {
+            return logPatterns.some(pattern => pattern.test(content));
         }
 
         function isValidContent(content) {
@@ -173,18 +182,20 @@
             return invalidCharRatio < 0.05; // Less than 5% invalid characters
         }
 
-        function detectEncoding(data) {
-            // Check for BOM (Byte Order Mark)
-            if (data.length >= 2 && data[0] === 0xFF && data[1] === 0xFE) return 'utf-16le';
-            if (data.length >= 2 && data[0] === 0xFE && data[1] === 0xFF) return 'utf-16be';
+        function detectEncoding(uint8array) {
+            // Simple heuristic to detect UTF-16 (BOM)
+            if (uint8array.length >= 2) {
+                if (uint8array[0] === 0xFE && uint8array[1] === 0xFF) return 'utf-16be';
+                if (uint8array[0] === 0xFF && uint8array[1] === 0xFE) return 'utf-16le';
+            }
             return 'utf-8';
         }
 
         function cleanContent(content, ext) {
             try {
-                // Check for skippable content (logs, translations)
-                if (isSkippableContent(content)) {
-                    return '[Irrelevant content (logs or translations), skipped]';
+                // Check for log content
+                if (isLogContent(content)) {
+                    return '[Log or error content, skipped]';
                 }
 
                 // Apply comment patterns
@@ -286,44 +297,60 @@
                     let statusText = 'Processed';
                     let content = '';
 
-                    const ext = relativePath.includes('.') ? relativePath.substring(relativePath.lastIndexOf('.')).toLowerCase() : relativePath;
+                    txtOutput += `--- ${relativePath} ---\n`;
+                    const ext = relativePath.includes('.') ? relativePath.substring(relativePath.lastIndexOf('.')).toLowerCase() : '';
 
                     if (isIgnoredPath(relativePath)) {
                         statusText = 'Skipped';
                         content = `[Ignored path, skipped]\n`;
+                        txtOutput += content;
                     } else if (nonTextExtensions.includes(ext)) {
                         statusText = 'Skipped';
                         skippedExtensions.add(ext);
                         content = `[Non-text file or unsupported extension (${ext}), skipped]\n`;
-                    } else if (!textExtensions.includes(ext)) {
-                        statusText = 'Skipped';
-                        skippedExtensions.add(ext);
-                        content = `[Unsupported extension (${ext}), skipped]\n`;
+                        txtOutput += content;
                     } else {
                         try {
                             // Read as uint8array to detect encoding
                             const binaryContent = await zipEntry.async('uint8array');
                             const encoding = detectEncoding(binaryContent);
-                            const decoder = new TextDecoder(encoding, { fatal: false });
+                            let decoder;
+                            if (encoding === 'utf-16le' || encoding === 'utf-16be') {
+                                decoder = new TextDecoder(encoding);
+                            } else {
+                                decoder = new TextDecoder('utf-8', { fatal: false });
+                            }
                             content = decoder.decode(binaryContent);
 
-                            content = cleanContent(content, ext);
-                            if (content.startsWith('[Parsing error') || content.startsWith('skipped]')) {
-                                statusText = 'Skipped';
+                            if (textExtensions.includes(ext)) {
+                                content = cleanContent(content, ext);
+                                if (content.startsWith('[Parsing error') || content.startsWith('[Invalid') || content.startsWith('[Log')) {
+                                    statusText = 'Skipped';
+                                    txtOutput += content + '\n';
+                                } else {
+                                    txtOutput += `${content}\n`;
+                                }
+                            } else {
+                                // Try to detect code in files without standard extensions
+                                const codeKeywords = /(function|def|class|struct|enum|interface|\bint\b|\bstring\b|\bvoid\b|\breturn\b)/i;
+                                if (codeKeywords.test(content) && isValidContent(content)) {
+                                    content = cleanContent(content, ''); // No specific comment pattern
+                                    txtOutput += `${content}\n`;
+                                } else {
+                                    statusText = 'Skipped';
+                                    skippedExtensions.add(ext || 'no_extension');
+                                    content = `[Non-code content (${ext || 'no extension'}), skipped]\n`;
+                                    txtOutput += content;
+                                }
                             }
                         } catch (e) {
                             statusText = 'Error';
                             content = `[Error reading file: ${e.message}]\n`;
+                            txtOutput += content;
                         }
                     }
 
-                    if (content && statusText === 'Processed') {
-                        txtOutput += `--- ${relativePath} ---\n${content}\n`;
-                    } else if (content) {
-                        txtOutput += `--- ${relativePath} ---\n${content}`;
-                    }
-
-                    allResults.push({ path: relativePath, status: content, size: fileSize, type: fileType });
+                    allResults.push({ path: relativePath, status: statusText, size: fileSize, type: fileType });
 
                     // Update progress
                     processedFiles++;
@@ -331,7 +358,7 @@
                     progressBar.style.width = `${progressPercent}%`;
 
                     // Yield to prevent UI freeze
-                    await new Promise(resolve => setTimeout(resolve, 1));
+                    await new Promise(resolve => setTimeout(resolve, 0));
                 }
 
                 // Render initial table
@@ -339,8 +366,7 @@
 
                 // Create download link
                 const txtBlob = new Blob([txtOutput], { type: 'text/plain;charset=utf-8' });
-                const txtUrl = await new Promise(resolve => URL.createObjectURL(txtBlob));
-                downloadLink.href = txtUrl;
+                const txtUrl = URL.createObjectURL(txtBlob);
                 downloadTxtLink.href = txtUrl;
                 downloadTxtLink.download = 'repository_contents.txt';
                 downloadTxtLink.classList.remove('hidden');
